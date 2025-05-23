@@ -1,95 +1,96 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mobile Music Instrument</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#000000">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instrumento Musical Móvil</title>
   <style>
-    body {
+    body, html {
       margin: 0;
-      height: 100vh;
-      background: linear-gradient(to top, #111, #444);
+      padding: 0;
+      height: 100%;
+      background: #111;
+      color: white;
       display: flex;
       justify-content: center;
       align-items: center;
-      color: white;
+      touch-action: none;
       font-family: sans-serif;
     }
-    #touchArea {
-      width: 90vw;
-      height: 90vh;
-      border: 3px solid white;
-      border-radius: 20px;
-      touch-action: none;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 1.2em;
     }
   </style>
 </head>
 <body>
-  <div id="touchArea">Toca la pantalla</div>
+  <div id="status">Toca la pantalla para empezar</div>
   <script>
-    let bluetoothDevice;
-    let bluetoothCharacteristic;
+    let context = new (window.AudioContext || window.webkitAudioContext)();
 
-    const touchArea = document.getElementById('touchArea');
-    let isMinor = false;
-
-    const sendNoteData = (data) => {
-      if (bluetoothCharacteristic) {
-        bluetoothCharacteristic.writeValue(new TextEncoder().encode(data));
-      }
-    };
-
-    const getOrientation = () => {
-      if (window.DeviceOrientationEvent) {
-        window.addEventListener("deviceorientation", (event) => {
-          isMinor = event.gamma < 0; // Simple orientation check
-        });
-      }
-    };
-
-    const getNoteFromTouch = (touches) => {
-      const notes = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-      const note = notes[touches.length - 1] || 'C';
-      return note;
-    };
-
-    touchArea.addEventListener('touchstart', (e) => {
-      const note = getNoteFromTouch(e.touches);
-      const chordType = e.touches.length === 3 ? (isMinor ? 'm' : 'M') : '';
-      sendNoteData(note + chordType);
-    });
-
-    touchArea.addEventListener('touchmove', (e) => {
-      const y = e.touches[0].clientY;
-      const screenHeight = window.innerHeight;
-      const mod = 1 - y / screenHeight;
-      sendNoteData('mod:' + mod.toFixed(2));
-    });
-
-    // Bluetooth connection (user triggered)
-    async function connectBluetooth() {
-      try {
-        bluetoothDevice = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb'] // Replace with your custom service UUID
-        });
-        const server = await bluetoothDevice.gatt.connect();
-        const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
-        bluetoothCharacteristic = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
-        alert('Conectado a Bluetooth');
-      } catch (error) {
-        console.error('Bluetooth Error:', error);
-      }
+    function createOscillator(freq) {
+      let osc = context.createOscillator();
+      let gain = context.createGain();
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      osc.connect(gain);
+      gain.connect(context.destination);
+      gain.gain.setValueAtTime(0.3, context.currentTime);
+      osc.start();
+      return { osc, gain };
     }
 
-    getOrientation();
-    window.addEventListener('click', connectBluetooth);
+    let notes = [];
+    let baseFreq = 440;
+
+    function playNote(touches, orientation) {
+      stopAll();
+      let freqs = [];
+      let pitchMod = (touches[0].clientY / window.innerHeight) * 200 - 100;
+      let tilt = orientation.gamma || 0;
+      let major = tilt >= 0;
+      if (touches.length === 1) {
+        freqs = [baseFreq + pitchMod];
+      } else if (touches.length === 2) {
+        freqs = [baseFreq + pitchMod, (baseFreq + pitchMod) * (major ? 1.26 : 1.2)];
+      } else if (touches.length >= 3) {
+        freqs = major
+          ? [baseFreq + pitchMod, (baseFreq + pitchMod) * 1.26, (baseFreq + pitchMod) * 1.5] // mayor
+          : [baseFreq + pitchMod, (baseFreq + pitchMod) * 1.2, (baseFreq + pitchMod) * 1.5]; // menor
+      }
+
+      notes = freqs.map(f => createOscillator(f));
+    }
+
+    function stopAll() {
+      notes.forEach(n => {
+        n.gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.1);
+        n.osc.stop(context.currentTime + 0.1);
+      });
+      notes = [];
+    }
+
+    let orientation = {};
+
+    window.addEventListener('deviceorientation', e => {
+      orientation = e;
+    });
+
+    document.body.addEventListener('touchstart', e => {
+      e.preventDefault();
+      playNote(e.touches, orientation);
+    }, { passive: false });
+
+    document.body.addEventListener('touchmove', e => {
+      e.preventDefault();
+      playNote(e.touches, orientation);
+    }, { passive: false });
+
+    document.body.addEventListener('touchend', stopAll);
+    document.body.addEventListener('touchcancel', stopAll);
   </script>
 </body>
 </html>
+
