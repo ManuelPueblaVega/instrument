@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Instrumento Musical Móvil</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111" />
   <style>
     body, html {
       margin: 0;
@@ -28,6 +30,10 @@
 <body>
   <div id="status">Toca la pantalla para empezar</div>
   <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+
     let context = new (window.AudioContext || window.webkitAudioContext)();
 
     function createOscillator(freq) {
@@ -93,4 +99,3 @@
   </script>
 </body>
 </html>
-
